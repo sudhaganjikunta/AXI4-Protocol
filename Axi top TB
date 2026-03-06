@@ -1,0 +1,84 @@
+module tb_axi_top;
+
+reg clk=0;
+reg rst=1;
+reg start_write=0;
+reg start_read=0;
+
+always #5 clk = ~clk;
+
+// AXI wires
+wire [31:0] AWADDR;
+wire [7:0]  AWLEN;
+wire [1:0]  AWBURST;
+wire        AWVALID;
+wire        AWREADY;
+
+wire [31:0] WDATA;
+wire        WLAST;
+wire        WVALID;
+wire        WREADY;
+
+wire [1:0]  BRESP;
+wire        BVALID;
+wire        BREADY;
+
+wire [31:0] ARADDR;
+wire [7:0]  ARLEN;
+wire [1:0]  ARBURST;
+wire        ARVALID;
+wire        ARREADY;
+
+wire [31:0] RDATA;
+wire        RLAST;
+wire        RVALID;
+wire        RREADY;
+
+// Instantiate
+axi_master master(
+    clk,rst,start_write,start_read,
+    AWADDR,AWLEN,AWBURST,AWVALID,AWREADY,
+    WDATA,WLAST,WVALID,WREADY,
+    BRESP,BVALID,BREADY,
+    ARADDR,ARLEN,ARBURST,ARVALID,ARREADY,
+    RDATA,RLAST,RVALID,RREADY
+);
+axi_slave slave(
+    .clk(clk),
+    .rst(rst),
+
+    .AWVALID(AWVALID),
+    .AWADDR(AWADDR),
+    .AWLEN(AWLEN),
+    .AWREADY(AWREADY),
+
+    .WVALID(WVALID),
+    .WDATA(WDATA),
+    .WLAST(WLAST),
+    .WREADY(WREADY),
+
+    .BVALID(BVALID),
+    .BRESP(BRESP),
+    .BREADY(BREADY),
+
+    .ARVALID(ARVALID),
+    .ARADDR(ARADDR),
+    .ARLEN(ARLEN),
+    .ARREADY(ARREADY),
+
+    .RDATA(RDATA),
+    .RVALID(RVALID),
+    .RLAST(RLAST),
+    .RREADY(RREADY)
+);
+initial begin
+    #20 rst=0;
+    #20 start_write=1;
+    #10 start_write=0;
+
+    #80 start_read=1;
+    #10 start_read=0;
+
+    #1000 $finish;
+end
+endmodule
