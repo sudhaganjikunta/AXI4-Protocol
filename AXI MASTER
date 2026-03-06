@@ -1,0 +1,114 @@
+module axi_master(
+    input clk,
+    input rst,
+    input start_write,
+    input start_read,
+    output reg [31:0] AWADDR,
+    output reg [7:0]  AWLEN,
+    output reg [1:0]  AWBURST,
+    output reg        AWVALID,
+    input             AWREADY,
+
+    output reg [31:0] WDATA,
+    output reg        WLAST,
+    output reg        WVALID,
+    input             WREADY,
+
+    input  [1:0] BRESP,
+    input        BVALID,
+    output reg   BREADY,
+
+    output reg [31:0] ARADDR,
+    output reg [7:0]  ARLEN,
+    output reg [1:0]  ARBURST,
+    output reg        ARVALID,
+    input             ARREADY,
+
+    input  [31:0] RDATA,
+    input         RLAST,
+    input         RVALID,
+    output reg    RREADY
+);
+
+reg [7:0] count;
+reg [7:0] burst_len;
+
+always @(posedge clk) begin
+    if (rst) begin
+        AWVALID<=0; WVALID<=0; BREADY<=1;
+        ARVALID<=0; RREADY<=0;
+        WLAST<=0; count<=0;
+        WDATA<=0;
+    end
+    else begin
+
+    // ---------------- WRITE ADDRESS ----------------
+    if (start_write && !AWVALID && !WVALID) begin
+        AWADDR  <= 32'h20;
+        AWLEN   <= 3;
+        AWBURST <= 2'b01;
+        AWVALID <= 1;
+
+        $display("[%0t] MASTER -> SLAVE : WRITE ADDR = %08h LEN=%0d BURST=%02b",
+                 $time, 32'h20, 3, 2'b01);
+    end
+
+    if (AWVALID && AWREADY) begin
+        AWVALID   <= 0;
+        WVALID    <= 1;
+        burst_len <= AWLEN;
+        count     <= 0;
+
+        // LOAD FIRST DATA BEFORE HANDSHAKE
+        WDATA <= 32'hA0000000;
+        WLAST <= (AWLEN == 0);
+    end
+
+    // ---------------- WRITE DATA ----------------
+    if (WVALID && WREADY) begin
+
+        $display("[%0t] MASTER -> SLAVE : WRITE DATA = %08h WLAST=%0d",
+                 $time, WDATA, WLAST);
+
+        if (count == burst_len) begin
+            WVALID <= 0;
+        end
+        else begin
+            count <= count + 1;
+            WDATA <= 32'hA0000000 + (count + 1);
+            WLAST <= ((count + 1) == burst_len);
+        end
+    end
+
+    if (BVALID)
+        $display("[%0t] SLAVE  -> MASTER: WRITE RESP = %02b",
+                 $time, BRESP);
+
+    // ---------------- READ ADDRESS ----------------
+    if (start_read && !ARVALID) begin
+        ARADDR  <= 32'h20;
+        ARLEN   <= 3;
+        ARBURST <= 2'b01;
+        ARVALID <= 1;
+
+        $display("[%0t] MASTER -> SLAVE : READ ADDR = %08h LEN=%0d BURST=%02b",
+                 $time, 32'h20, 3, 2'b01);
+    end
+
+    if (ARVALID && ARREADY) begin
+        ARVALID <= 0;
+        RREADY  <= 1;
+    end
+
+    if (RVALID && RREADY) begin
+        $display("[%0t] SLAVE  -> MASTER: READ DATA = %08h RLAST=%0d",
+                 $time, RDATA, RLAST);
+
+        if (RLAST)
+            RREADY <= 0;
+    end
+
+    end
+end
+
+endmodule
