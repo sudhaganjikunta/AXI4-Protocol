@@ -1,0 +1,142 @@
+module axi_slave #(
+    parameter ADDR_WIDTH = 32,
+    parameter DATA_WIDTH = 32,
+    parameter MEM_DEPTH  = 256
+)(
+    input                    clk,
+    input                    rst,
+    
+    // ---------------- WRITE ADDRESS ----------------
+    input                    AWVALID,
+    input  [ADDR_WIDTH-1:0]  AWADDR,
+    input  [7:0]             AWLEN,
+    output reg               AWREADY,
+    
+    // ---------------- WRITE DATA ----------------
+    input                    WVALID,
+    input  [DATA_WIDTH-1:0]  WDATA,
+    input                    WLAST,
+    output reg               WREADY,
+    
+    // ---------------- WRITE RESPONSE ----------------
+    output reg               BVALID,
+    output reg [1:0]         BRESP,
+    input                    BREADY,
+    
+    // ---------------- READ ADDRESS ----------------
+    input                    ARVALID,
+    input  [ADDR_WIDTH-1:0]  ARADDR,
+    input  [7:0]             ARLEN,
+    output reg               ARREADY,
+    
+    // ---------------- READ DATA ----------------
+    output reg               RVALID,
+    output reg [DATA_WIDTH-1:0] RDATA,
+    output reg               RLAST,
+    input                    RREADY
+);
+
+    // ---------------- MEMORY ----------------
+    reg [DATA_WIDTH-1:0] mem [0:MEM_DEPTH-1];
+
+    integer i;
+    initial begin
+        for (i=0; i<MEM_DEPTH; i=i+1)
+            mem[i] = 0;
+    end
+
+    // ---------------- INTERNAL REGISTERS ----------------
+    reg [ADDR_WIDTH-1:0] addr_reg;
+    reg [7:0] burst_len;
+    reg [7:0] write_count;
+    reg [7:0] read_count;
+    reg write_active;
+    reg read_active;
+
+   
+    //   WRITE CHANNEL
+   
+    always @(posedge clk) begin
+        if (rst) begin
+            AWREADY <= 1;
+            WREADY  <= 1;
+            BVALID  <= 0;
+            BRESP   <= 0;
+            write_active <= 0;
+            write_count  <= 0;
+        end
+        else begin
+
+            // Address handshake
+            if (AWVALID && AWREADY) begin
+                addr_reg     <= AWADDR;
+                burst_len    <= AWLEN;
+                write_count  <= 0;
+                write_active <= 1;
+            end
+
+            // Data handshake
+            if (write_active && WVALID && WREADY) begin
+                mem[(addr_reg >> 2) + write_count] <= WDATA;
+                write_count <= write_count + 1;
+
+                if (WLAST) begin
+                    write_active <= 0;
+                    BVALID <= 1;
+                    BRESP  <= 2'b00;  // OKAY response
+                end
+            end
+
+            // Response handshake
+            if (BVALID && BREADY)
+                BVALID <= 0;
+
+        end
+    end
+
+  
+    //  READ CHANNEL (FIXED)
+   
+    always @(posedge clk) begin
+        if (rst) begin
+            ARREADY     <= 1;
+            RVALID      <= 0;
+            RLAST       <= 0;
+            read_active <= 0;
+            read_count  <= 0;
+            RDATA       <= 0;
+        end
+        else begin
+    
+            // Address handshake
+            if (ARVALID && ARREADY) begin
+                addr_reg    <= ARADDR;
+                burst_len   <= ARLEN;
+                read_count  <= 0;
+                read_active <= 1;
+    
+                RVALID <= 1;
+                RDATA  <= mem[(ARADDR >> 2)];
+                RLAST  <= (ARLEN == 0);
+            end
+    
+            // Data phase
+            else if (read_active && RVALID && RREADY) begin
+    
+                if (read_count == burst_len) begin
+                    RVALID      <= 0;
+                    read_active <= 0;
+                    RLAST       <= 0;
+                end
+                else begin
+                    read_count <= read_count + 1;
+    
+                    RDATA <= mem[(addr_reg >> 2) + read_count + 1];
+                    RLAST <= ((read_count + 1) == burst_len);
+                end
+            end
+    
+        end
+    end
+
+endmodule
